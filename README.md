@@ -302,11 +302,29 @@ erDiagram
 | `NOT_FOUND`                 | 200  | профиль с таким id не существует                                                    |
 | `BAD_USER_INPUT`            | 200  | id не является положительным int4 (`"abc"`, `"0"`, `"99999999999"`) — `ParseIdPipe` |
 | `GRAPHQL_VALIDATION_FAILED` | 400  | несуществующее поле, неверный enum, превышены лимиты сложности запроса              |
+| `TOO_MANY_REQUESTS`         | 200  | превышен rate limit на IP; заголовок `Retry-After` — через сколько секунд повторить |
 | `INTERNAL_SERVER_ERROR`     | 200  | непредвиденный сбой (в production — без деталей)                                    |
+
+Ошибки выполнения отдаются с HTTP 200: `@nestjs/apollo` намеренно не меняет статус, когда в ответе есть `data`,
+чтобы GraphQL-клиенты разбирали `{ data, errors }` как обычно (GraphQL-over-HTTP для `application/json`).
+Сигнал для клиента — `extensions.code`.
 
 Глобальный фильтр `DomainErrorFilter` регистрируется через `{ provide: APP_FILTER, useClass }`, а не
 `app.useGlobalFilters()`: так он создаётся DI-контейнером и действует и в e2e, где `main.ts` не выполняется.
 Фильтр лишь не даёт Nest логировать ожидаемые ошибки как сбои; маппинг в коды делает `format-graphql-error.ts`.
+
+### Rate limit
+
+`@nestjs/throttler` с guard'ом для GraphQL ограничивает число корневых полей на IP клиента
+(`RATE_LIMIT_PER_MINUTE`, по умолчанию 120 в минуту; каждый алиас корневого поля — отдельное обращение). `/health`
+не ограничивается — его опрашивает Docker. За обратным прокси IP берётся из `X-Forwarded-For` с доверием ровно к
+`TRUST_PROXY` прокси, поэтому подменить IP и обойти лимит нельзя.
+
+### Деплой
+
+Production — один VPS: тот же Docker-стек плюс Caddy с автоматическим HTTPS, наружу открыты только 80/443.
+Конфигурация — [`deploy/`](deploy): заполнить `deploy/.env` по шаблону `deploy/.env.example` и выполнить
+`docker compose -f deploy/docker-compose.yml up -d --build` из корня репозитория.
 
 ### Docker
 
@@ -353,6 +371,8 @@ CI (GitHub Actions): lint + typecheck + unit с покрытием → e2e с Po
 | `GRAPHQL_MAX_DEPTH`                                        | `6`          | максимальная глубина запроса            |
 | `GRAPHQL_MAX_ALIASES`                                      | `15`         | максимум алиасов в операции             |
 | `GRAPHQL_MAX_COST`                                         | `1000`       | максимальная статическая стоимость      |
+| `RATE_LIMIT_PER_MINUTE`                                    | `120`        | корневых полей на IP в минуту; 0 — выкл |
+| `TRUST_PROXY`                                              | `0`          | число обратных прокси перед API         |
 | `PRISMA_LOG_QUERIES`                                       | `false`      | логировать SQL (наглядно видно батчинг) |
 | `DATABASE_URL`                                             | —            | строка подключения PostgreSQL           |
 | `S3_ENDPOINT` / `S3_PUBLIC_ENDPOINT`                       | —            | адрес S3 для API / для ссылок браузеру  |

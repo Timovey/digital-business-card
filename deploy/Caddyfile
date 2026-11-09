@@ -1,0 +1,46 @@
+# Единственная точка входа из интернета. HTTPS-сертификат Let's Encrypt Caddy получает и продлевает сам.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# GraphQL-запрос визитки — сотни байт; лимит отсекает мусор до того, как он дойдёт до Node.
+	request_body {
+		max_size 100KB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	# API и GraphiQL (GET /graphql из браузера).
+	handle /graphql {
+		reverse_proxy api:3000
+	}
+
+	# Публичные файлы бакета: /media/public/<key> → s3:9000/<bucket>/public/<key>.
+	# Наружу проксируется только префикс public/ — ни S3 API, ни приватные объекты недоступны.
+	# handle_path срезает /media/public первым шагом (у `uri strip_prefix` порядок ниже, чем
+	# у `rewrite`, и префикс срезался бы уже после перезаписи пути).
+	handle_path /media/public/* {
+		rewrite * /{$S3_BUCKET}/public{uri}
+		reverse_proxy s3:9000 {
+			header_up Host {upstream_hostport}
+		}
+	}
+
+	# `*` обязателен: аргумент, начинающийся с `/`, Caddy читает как матчер пути, а не как цель.
+	handle / {
+		redir * /graphql 302
+	}
+
+	# Всё остальное, включая /health (он нужен только Docker внутри сети), — 404.
+	handle {
+		respond 404
+	}
+}

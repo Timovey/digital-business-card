@@ -47,6 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Production compose is valid
+        run: |
+          cp deploy/.env.example deploy/.env
+          docker compose -f deploy/docker-compose.yml config -q
       - name: Start the stack exactly as a reviewer would
         run: docker compose up -d --build --wait
       - name: Query the API

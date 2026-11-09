@@ -1,0 +1,128 @@
+# Production-стек для одного VPS. Запуск из корня репозитория:
+#   docker compose -f deploy/docker-compose.yml up -d --build
+# Секреты — в deploy/.env (шаблон: deploy/.env.example).
+#
+# Отличия от корневого docker-compose.yml (локальная разработка):
+# - наружу открыт только Caddy (80/443, автоматический HTTPS); Postgres, S3 API, консоль S3 и /health
+#   доступны лишь внутри docker-сети;
+# - у секретов нет значений по умолчанию: без deploy/.env стек не стартует;
+# - API знает, что стоит за одним прокси (TRUST_PROXY=1), — rate limit видит реальный IP клиента;
+# - логи контейнеров ограничены по размеру, чтобы не заполнить диск.
+name: business-card-prod
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+x-database-url: &database-url postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in deploy/.env}@postgres:5432/${POSTGRES_DB:?}?schema=public
+
+x-s3-env: &s3-env
+  S3_ENDPOINT: http://s3:9000
+  # Аватар отдаётся через Caddy: https://<домен>/media/public/... (см. Caddyfile).
+  S3_PUBLIC_ENDPOINT: https://${DOMAIN:?set DOMAIN in deploy/.env}
+  S3_PUBLIC_URL: https://${DOMAIN}/media
+  S3_REGION: us-east-1
+  S3_BUCKET: ${S3_BUCKET:-business-card}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in deploy/.env}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in deploy/.env}
+  S3_FORCE_PATH_STYLE: 'true'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: *logging
+
+  s3:
+    image: rustfs/rustfs:1.0.4
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:?}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:?}
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: 'false'
+      RUSTFS_VOLUMES: /data
+    volumes:
+      - s3-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:9000/health']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    logging: *logging
+
+  # Миграции + идемпотентный сид при каждом деплое; API стартует только после их успеха.
+  migrate:
+    build:
+      context: ..
+      target: migrator
+    environment:
+      DATABASE_URL: *database-url
+      <<: *s3-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+    restart: 'no'
+    logging: *logging
+
+  api:
+    build:
+      context: ..
+      target: runtime
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      GRAPHQL_SANDBOX: 'true'
+      TRUST_PROXY: 1
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      DATABASE_URL: *database-url
+      <<: *s3-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      s3:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+  caddy:
+    image: caddy:2.11.2-alpine
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      DOMAIN: ${DOMAIN:?}
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in deploy/.env}
+      S3_BUCKET: ${S3_BUCKET:-business-card}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  postgres-data:
+  s3-data:
+  # Сертификаты Let's Encrypt: единственное, что стоит сохранять при переезде на другой сервер.
+  caddy-data:
+  caddy-config:
