@@ -1,0 +1,96 @@
+# Запуск одной командой: `docker compose up --build`.
+# У каждой переменной есть значение по умолчанию, поэтому стек стартует и из свежего клона без `.env`.
+# Значения по умолчанию — учётные данные только для локальной разработки.
+name: business-card
+
+x-database-url: &database-url postgresql://${POSTGRES_USER:-card}:${POSTGRES_PASSWORD:-card}@postgres:5432/${POSTGRES_DB:-card}?schema=public
+
+x-s3-env: &s3-env
+  S3_ENDPOINT: http://s3:9000
+  S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+  S3_PUBLIC_URL: ${S3_PUBLIC_URL:-}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-business-card}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-card-access-key}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:-card-secret-key}
+  S3_FORCE_PATH_STYLE: 'true'
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-card}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-card}
+      POSTGRES_DB: ${POSTGRES_DB:-card}
+    ports:
+      - '${POSTGRES_PORT:-5433}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # S3-совместимое объектное хранилище (RustFS, Apache-2.0). Любой S3-провайдер подключается через env.
+  s3:
+    image: rustfs/rustfs:1.0.4
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:-card-access-key}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:-card-secret-key}
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_CONSOLE_ENABLE: 'true'
+      RUSTFS_CONSOLE_ADDRESS: 0.0.0.0:9001
+      RUSTFS_VOLUMES: /data
+    ports:
+      - '${S3_PORT:-9000}:9000'
+      - '${S3_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - s3-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:9000/health']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Разовая задача: `prisma migrate deploy` + идемпотентный сид. API стартует только после её успеха.
+  migrate:
+    build:
+      context: .
+      target: migrator
+    environment:
+      DATABASE_URL: *database-url
+      <<: *s3-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      target: runtime
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      GRAPHQL_SANDBOX: ${GRAPHQL_SANDBOX:-true}
+      GRAPHQL_MAX_DEPTH: ${GRAPHQL_MAX_DEPTH:-6}
+      GRAPHQL_MAX_ALIASES: ${GRAPHQL_MAX_ALIASES:-15}
+      GRAPHQL_MAX_COST: ${GRAPHQL_MAX_COST:-1000}
+      PRISMA_LOG_QUERIES: ${PRISMA_LOG_QUERIES:-false}
+      DATABASE_URL: *database-url
+      <<: *s3-env
+    ports:
+      - '${API_PORT:-3000}:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      s3:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  s3-data:
