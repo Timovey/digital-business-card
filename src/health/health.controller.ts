@@ -5,12 +5,14 @@ import {
   HealthIndicatorService,
   PrismaHealthIndicator,
 } from '@nestjs/terminus';
+import { SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '../infra/prisma/prisma.service';
 import { S3Storage } from '../infra/storage/s3-storage';
 
 const CHECK_TIMEOUT_MS = 2000;
 
 /** Проверка готовности для healthcheck в Docker: API готов, когда отвечают БД и S3. */
+@SkipThrottle()
 @Controller('health')
 export class HealthController {
   constructor(

@@ -13,6 +13,11 @@ export const envSchema = z.object({
   GRAPHQL_MAX_DEPTH: z.coerce.number().int().positive().default(6),
   GRAPHQL_MAX_ALIASES: z.coerce.number().int().nonnegative().default(15),
   GRAPHQL_MAX_COST: z.coerce.number().positive().default(1000),
+  // Корневых GraphQL-полей на один IP в минуту (алиас — отдельное поле); 0 — без ограничения.
+  RATE_LIMIT_PER_MINUTE: z.coerce.number().int().nonnegative().default(120),
+  // Сколько обратных прокси стоит перед API (Caddy на VPS — 1). Нужно, чтобы rate limit видел
+  // реальный IP клиента из X-Forwarded-For, а не адрес прокси. Без прокси — 0.
+  TRUST_PROXY: z.coerce.number().int().nonnegative().default(0),
   PRISMA_LOG_QUERIES: z.stringbool().default(false),
 
   DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),

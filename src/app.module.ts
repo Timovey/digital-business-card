@@ -1,11 +1,13 @@
 import { ApolloDriver, type ApolloDriverConfig } from '@nestjs/apollo';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { GraphQLModule } from '@nestjs/graphql';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { CommonModule } from './common/common.module';
-import { validateEnv } from './config/env.schema';
+import { type Env, validateEnv } from './config/env.schema';
 import { DomainErrorFilter } from './graphql/domain-error.filter';
+import { GqlThrottlerGuard } from './graphql/gql-throttler.guard';
 import { getGraphQlConfig } from './graphql/graphql.config';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './infra/prisma/prisma.module';
@@ -21,12 +23,22 @@ import { ApiModule } from './modules/api.module';
       inject: [ConfigService],
       useFactory: getGraphQlConfig,
     }),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<Env, true>) => {
+        const limit = config.get('RATE_LIMIT_PER_MINUTE', { infer: true });
+        return { throttlers: [{ ttl: 60_000, limit }], skipIf: () => limit === 0 };
+      },
+    }),
     CommonModule,
     PrismaModule,
     StorageModule,
     HealthModule,
     ApiModule,
   ],
-  providers: [{ provide: APP_FILTER, useClass: DomainErrorFilter }],
+  providers: [
+    { provide: APP_FILTER, useClass: DomainErrorFilter },
+    { provide: APP_GUARD, useClass: GqlThrottlerGuard },
+  ],
 })
 export class AppModule {}
