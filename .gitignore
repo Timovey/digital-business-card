@@ -24,3 +24,7 @@ Thumbs.db
 
 # Generated (Prisma client is rebuilt by `prisma generate`)
 src/generated/
+
+# Локальный движок Prisma для сборки без доступа к binaries.prisma.sh (prisma/engines/README.md)
+prisma/engines/*
+!prisma/engines/README.md

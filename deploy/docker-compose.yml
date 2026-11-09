@@ -71,6 +71,7 @@ services:
       target: migrator
       args:
         PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-}
+        PRISMA_SCHEMA_ENGINE_BINARY: ${PRISMA_SCHEMA_ENGINE_BINARY:-}
     environment:
       DATABASE_URL: *database-url
       <<: *s3-env
@@ -88,6 +89,7 @@ services:
       target: runtime
       args:
         PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-}
+        PRISMA_SCHEMA_ENGINE_BINARY: ${PRISMA_SCHEMA_ENGINE_BINARY:-}
     environment:
       NODE_ENV: production
       PORT: 3000

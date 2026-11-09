@@ -10,10 +10,18 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma/schema.prisma ./prisma/schema.prisma
-# Зеркало движков Prisma (`prisma generate` скачивает их с binaries.prisma.sh). Пустое значение —
-# официальный адрес; задаётся там, где он недоступен. Аргумент виден только на этапе сборки.
+# Движок Prisma (schema-engine) по умолчанию скачивается с binaries.prisma.sh при `npm ci`.
+# Где сеть до него ненадёжна, есть два способа, оба необязательные (пусто — обычное скачивание):
+# - PRISMA_ENGINES_MIRROR — зеркало для скачивания (только на время сборки);
+# - PRISMA_SCHEMA_ENGINE_BINARY — готовый бинарник из prisma/engines/ (см. prisma/engines/README.md).
+#   Переменная остаётся в образе migrator: по ней `prisma migrate deploy` находит движок.
+COPY prisma/engines/ ./prisma/engines/
 ARG PRISMA_ENGINES_MIRROR
-RUN --mount=type=cache,target=/root/.npm npm ci
+ARG PRISMA_SCHEMA_ENGINE_BINARY
+ENV PRISMA_SCHEMA_ENGINE_BINARY=${PRISMA_SCHEMA_ENGINE_BINARY}
+RUN --mount=type=cache,target=/root/.npm \
+    if [ -n "$PRISMA_SCHEMA_ENGINE_BINARY" ]; then chmod 755 "$PRISMA_SCHEMA_ENGINE_BINARY"; fi \
+    && npm ci
 
 # ---------- build: компиляция TypeScript ----------
 FROM deps AS build
