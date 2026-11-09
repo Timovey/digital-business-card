@@ -1,0 +1,4 @@
+# Normalize line endings: LF in the repo and in containers (shell scripts break on CRLF)
+* text=auto eol=lf
+*.png binary
+*.jpg binary

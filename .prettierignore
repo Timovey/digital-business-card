@@ -1,0 +1,8 @@
+dist
+coverage
+node_modules
+src/generated
+# Генерируется Nest из кода (code-first); формат задаёт генератор, актуальность проверяет `npm run schema:check`
+schema.gql
+prisma/migrations
+package-lock.json
