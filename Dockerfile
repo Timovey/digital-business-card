@@ -35,6 +35,9 @@ FROM deps AS migrator
 COPY tsconfig.json ./
 COPY prisma ./prisma
 COPY src ./src
+# COPY prisma заново кладёт локальный движок с правами из контекста сборки (обычно 644): возвращаем
+# бит исполнения, иначе пользователь node не сможет запустить его при `migrate deploy`.
+RUN if [ -n "$PRISMA_SCHEMA_ENGINE_BINARY" ]; then chmod 755 "$PRISMA_SCHEMA_ENGINE_BINARY"; fi
 USER node
 CMD ["npm", "run", "db:setup"]
 
