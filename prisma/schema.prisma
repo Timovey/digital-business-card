@@ -1,0 +1,181 @@
+// Модель данных цифровой визитки.
+// Соглашения: snake_case для таблиц/колонок в PostgreSQL, camelCase в TypeScript,
+// целочисленные автоинкрементные первичные ключи, явный порядок сортировки там,
+// где важен порядок отображения.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "cjs"
+  // Указано явно, чтобы генерация не зависела от наличия tsconfig.json (стадия deps в Docker).
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum SocialLinkKind {
+  GITHUB
+  TELEGRAM
+  EMAIL
+  PHONE
+}
+
+enum SkillCategory {
+  LANGUAGE
+  BACKEND
+  FRONTEND
+  DATABASE
+  DEVOPS
+  TESTING
+  PRACTICE
+}
+
+enum ProjectKind {
+  /// Проект по месту работы: обязательно ссылается на Experience.
+  WORK
+  /// Собственный полукоммерческий проект с реальными пользователями или заказчиком.
+  SIDE
+  /// Пет-проект.
+  PET
+}
+
+/// Владелец визитки: в базе ровно один профиль, его заводит сид.
+model Profile {
+  id          Int      @id @default(autoincrement())
+  fullName    String   @map("full_name") @db.VarChar(150)
+  headline    String   @db.VarChar(150)
+  description String
+  location    String?  @db.VarChar(100)
+  /// Ключ объекта аватара в S3; наружу API отдаёт вместо него presigned URL.
+  avatarKey   String?  @map("avatar_key") @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  links      SocialLink[]
+  skills     Skill[]
+  experience Experience[]
+  projects   Project[]
+
+  @@map("profiles")
+}
+
+model SocialLink {
+  id        Int            @id @default(autoincrement())
+  profileId Int            @map("profile_id")
+  kind      SocialLinkKind
+  label     String         @db.VarChar(100)
+  url       String         @db.VarChar(2048)
+  sortOrder Int            @default(0) @map("sort_order") @db.SmallInt
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, url])
+  @@index([profileId, sortOrder])
+  @@map("social_links")
+}
+
+model Skill {
+  id        Int           @id @default(autoincrement())
+  profileId Int           @map("profile_id")
+  name      String        @db.VarChar(50)
+  category  SkillCategory
+  sortOrder Int           @default(0) @map("sort_order") @db.SmallInt
+
+  profile     Profile                @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  projects    ProjectTechnology[]
+  experiences ExperienceTechnology[]
+
+  @@unique([profileId, name])
+  @@index([profileId, sortOrder])
+  @@map("skills")
+}
+
+model Experience {
+  id         Int       @id @default(autoincrement())
+  profileId  Int       @map("profile_id")
+  company    String    @db.VarChar(150)
+  companyUrl String?   @map("company_url") @db.VarChar(2048)
+  location   String?   @db.VarChar(100)
+  position   String    @db.VarChar(150)
+  startDate  DateTime  @map("start_date") @db.Date
+  /// NULL означает, что это текущее место работы.
+  endDate    DateTime? @map("end_date") @db.Date
+
+  profile      Profile                @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  technologies ExperienceTechnology[]
+  projects     Project[]
+
+  @@unique([profileId, company, startDate])
+  @@index([profileId, startDate(sort: Desc)])
+  @@map("experiences")
+}
+
+/// Достижения и обязанности на проекте, в порядке показа.
+model Achievement {
+  id        Int    @id @default(autoincrement())
+  projectId Int    @map("project_id")
+  text      String
+  sortOrder Int    @default(0) @map("sort_order") @db.SmallInt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  /// Естественный ключ: позиция достижения в проекте. По нему сид делает upsert, поэтому id
+  /// стабильны между запусками (у текста ключом быть нельзя — его правят).
+  @@unique([projectId, sortOrder])
+  @@map("achievements")
+}
+
+model Project {
+  id            Int         @id @default(autoincrement())
+  profileId     Int         @map("profile_id")
+  name          String      @db.VarChar(150)
+  description   String
+  kind          ProjectKind
+  /// Место работы, в рамках которого сделан проект; NULL у SIDE и PET (CHECK в миграции).
+  experienceId  Int?        @map("experience_id")
+  /// NULL у закрытых репозиториев.
+  repositoryUrl String?     @map("repository_url") @db.VarChar(2048)
+  demoUrl       String?     @map("demo_url") @db.VarChar(2048)
+  featured      Boolean     @default(false)
+  sortOrder     Int         @default(0) @map("sort_order") @db.SmallInt
+
+  profile      Profile             @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  experience   Experience?         @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  technologies ProjectTechnology[]
+  achievements Achievement[]
+
+  @@unique([profileId, name])
+  @@index([profileId, sortOrder])
+  @@index([experienceId, sortOrder])
+  @@map("projects")
+}
+
+/// Явные связующие таблицы (вместо неявной m2m) сохраняют порядок стека
+/// и дают читаемые имена таблиц.
+model ProjectTechnology {
+  projectId Int @map("project_id")
+  skillId   Int @map("skill_id")
+  sortOrder Int @default(0) @map("sort_order") @db.SmallInt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  skill   Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, skillId])
+  @@index([skillId])
+  @@map("project_technologies")
+}
+
+model ExperienceTechnology {
+  experienceId Int @map("experience_id")
+  skillId      Int @map("skill_id")
+  sortOrder    Int @default(0) @map("sort_order") @db.SmallInt
+
+  experience Experience @relation(fields: [experienceId], references: [id], onDelete: Cascade)
+  skill      Skill      @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([experienceId, skillId])
+  @@index([skillId])
+  @@map("experience_technologies")
+}
