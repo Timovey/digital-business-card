@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, types, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:cov
+
+  e2e:
+    name: E2E (PostgreSQL + S3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: cp .env.example .env
+      - run: docker compose up -d --wait postgres s3
+      - run: npm run db:setup
+      - run: npm run test:e2e
+      # e2e пересобирает schema.gql из кода; расхождение с коммитом = забытый контракт API
+      - run: npm run schema:check
+
+  docker:
+    name: Full stack from scratch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Start the stack exactly as a reviewer would
+        run: docker compose up -d --build --wait
+      - name: Query the API
+        run: |
+          curl -fsS http://localhost:3000/graphql \
+            -H 'content-type: application/json' \
+            -d '{"query":"{ profile { fullName skills { name } experience { company } projects { name } } }"}' \
+            | tee response.json
+          grep -q '"fullName":"Кочетков Тимофей Сергеевич"' response.json
+      - name: GraphiQL is served in production
+        run: |
+          curl -fsS http://localhost:3000/graphql -H 'accept: text/html' | grep -q '<title>GraphiQL</title>'
+      - name: Query limits are enforced in production
+        run: |
+          query='{ profile { projects { experience { projects { experience { projects { experience { company } } } } } } } }'
+          status=$(curl -s -o limits.json -w '%{http_code}' http://localhost:3000/graphql \
+            -H 'content-type: application/json' -d "{\"query\":\"$query\"}")
+          cat limits.json
+          test "$status" = 400
+          grep -q 'GRAPHQL_VALIDATION_FAILED' limits.json
+      - if: failure()
+        run: docker compose logs
