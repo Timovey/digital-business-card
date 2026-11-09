@@ -1,0 +1,172 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+"""Achievement or responsibility on a project."""
+type Achievement {
+  id: ID!
+  text: String!
+}
+
+"""Length of a period in whole calendar months."""
+type Duration {
+  """Months on top of full years (0–11)."""
+  months: Int!
+
+  """Human-readable form, e.g. "1 год 8 месяцев"."""
+  text: String!
+  totalMonths: Int!
+  years: Int!
+}
+
+"""Position held at a company."""
+type Experience {
+  company: String!
+  companyUrl: String
+  duration: Duration!
+
+  """`null` for the current position."""
+  endDate: LocalDate
+  id: ID!
+  isCurrent: Boolean!
+  location: String
+
+  """E.g. "Март 2025 — настоящее время"."""
+  period: String!
+  position: String!
+
+  """Projects done at this job."""
+  projects: [Project!]!
+  startDate: LocalDate!
+
+  """Technology stack used in this position."""
+  technologies: [Skill!]!
+}
+
+"""Calendar date without time zone, ISO 8601 `YYYY-MM-DD`."""
+scalar LocalDate
+
+"""Professional profile of the business card owner."""
+type Profile {
+  """
+  Permanent public URL of the avatar; changes only when the image changes.
+  """
+  avatarUrl: String
+
+  """Short professional summary."""
+  description: String!
+
+  """Work history, most recent first."""
+  experience: [Experience!]!
+  fullName: String!
+
+  """Current role or job title, e.g. "Lead Fullstack Developer"."""
+  headline: String!
+  id: ID!
+
+  """GitHub, Telegram, e-mail, etc."""
+  links: [SocialLink!]!
+  location: String
+  projects(
+    """Only featured (`true`) or only non-featured (`false`) projects."""
+    featured: Boolean
+
+    """Only projects of this kind."""
+    kind: ProjectKind
+  ): [Project!]!
+
+  """
+  Skills grouped by category. Shares the batch with `skills`: no extra query.
+  """
+  skillGroups: [SkillGroup!]!
+
+  """Flat list of skills in presentation order."""
+  skills: [Skill!]!
+
+  """Total commercial experience; overlapping periods are counted once."""
+  totalExperience: Duration!
+}
+
+"""Work, side or pet project."""
+type Project {
+  """Achievements and responsibilities, in presentation order."""
+  achievements: [Achievement!]!
+
+  """Live demo, if deployed."""
+  demoUrl: String
+  description: String!
+
+  """Job the project was done at; null for side and pet projects."""
+  experience: Experience
+
+  """Highlighted on the business card."""
+  featured: Boolean!
+  id: ID!
+  kind: ProjectKind!
+  name: String!
+
+  """Null for private repositories."""
+  repositoryUrl: String
+
+  """Technology stack of the project."""
+  technologies: [Skill!]!
+}
+
+enum ProjectKind {
+  """Pet project."""
+  PET
+
+  """Own semi-commercial project with real users or a customer."""
+  SIDE
+
+  """Done at a job; `experience` points to it."""
+  WORK
+}
+
+type Query {
+  """Profile by id. Without arguments returns the business card owner."""
+  profile(id: ID): Profile!
+}
+
+"""Technology, tool or professional practice."""
+type Skill {
+  category: SkillCategory!
+  id: ID!
+  name: String!
+}
+
+enum SkillCategory {
+  BACKEND
+  DATABASE
+  DEVOPS
+  FRONTEND
+  LANGUAGE
+  PRACTICE
+  TESTING
+}
+
+"""Skills of one category, in presentation order."""
+type SkillGroup {
+  category: SkillCategory!
+  skills: [Skill!]!
+}
+
+"""Link to GitHub, Telegram or another professional resource."""
+type SocialLink {
+  id: ID!
+  kind: SocialLinkKind!
+
+  """Human-readable label, e.g. "@timovey73"."""
+  label: String!
+
+  """Absolute URL (`mailto:` for e-mail, `tel:` for phone)."""
+  url: String!
+}
+
+"""Kind of an external professional resource."""
+enum SocialLinkKind {
+  EMAIL
+  GITHUB
+  PHONE
+  TELEGRAM
+}
