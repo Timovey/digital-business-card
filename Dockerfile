@@ -10,6 +10,9 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json package-lock.json prisma.config.ts ./
 COPY prisma/schema.prisma ./prisma/schema.prisma
+# Зеркало движков Prisma (`prisma generate` скачивает их с binaries.prisma.sh). Пустое значение —
+# официальный адрес; задаётся там, где он недоступен. Аргумент виден только на этапе сборки.
+ARG PRISMA_ENGINES_MIRROR
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 # ---------- build: компиляция TypeScript ----------

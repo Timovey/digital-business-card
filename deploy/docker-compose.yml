@@ -69,6 +69,8 @@ services:
     build:
       context: ..
       target: migrator
+      args:
+        PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-}
     environment:
       DATABASE_URL: *database-url
       <<: *s3-env
@@ -84,6 +86,8 @@ services:
     build:
       context: ..
       target: runtime
+      args:
+        PRISMA_ENGINES_MIRROR: ${PRISMA_ENGINES_MIRROR:-}
     environment:
       NODE_ENV: production
       PORT: 3000
