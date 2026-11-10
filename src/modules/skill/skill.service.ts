@@ -10,14 +10,14 @@ export class SkillService {
   findByProfileIds(profileIds: readonly number[]): Promise<Skill[]> {
     return this.prisma.skill.findMany({
       where: { profileId: { in: [...profileIds] } },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     });
   }
 
   findByProjectIds(projectIds: readonly number[]): Promise<{ projectId: number; skill: Skill }[]> {
     return this.prisma.projectTechnology.findMany({
       where: { projectId: { in: [...projectIds] } },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { skillId: 'asc' }],
       select: { projectId: true, skill: true },
     });
   }
@@ -27,7 +27,7 @@ export class SkillService {
   ): Promise<{ experienceId: number; skill: Skill }[]> {
     return this.prisma.experienceTechnology.findMany({
       where: { experienceId: { in: [...experienceIds] } },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { skillId: 'asc' }],
       select: { experienceId: true, skill: true },
     });
   }

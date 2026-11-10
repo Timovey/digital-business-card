@@ -35,7 +35,7 @@ export class ProfileService {
   findLinksByProfileIds(profileIds: readonly number[]): Promise<SocialLink[]> {
     return this.prisma.socialLink.findMany({
       where: { profileId: { in: [...profileIds] } },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     });
   }
 }
