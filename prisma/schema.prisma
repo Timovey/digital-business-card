@@ -48,7 +48,7 @@ model Profile {
   headline    String   @db.VarChar(150)
   description String
   location    String?  @db.VarChar(100)
-  /// Ключ объекта аватара в S3; наружу API отдаёт вместо него presigned URL.
+  /// Ключ объекта аватара в S3; наружу API отдаёт вместо него постоянный публичный URL (`avatarUrl`).
   avatarKey   String?  @map("avatar_key") @db.VarChar(255)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
