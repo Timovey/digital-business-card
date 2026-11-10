@@ -26,7 +26,7 @@ export class ExperienceService {
   findByProfileIds(profileIds: readonly number[]): Promise<Experience[]> {
     return this.prisma.experience.findMany({
       where: { profileId: { in: [...profileIds] } },
-      orderBy: { startDate: 'desc' },
+      orderBy: [{ startDate: 'desc' }, { id: 'asc' }],
     });
   }
 

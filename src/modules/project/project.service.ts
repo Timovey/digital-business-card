@@ -10,14 +10,14 @@ export class ProjectService {
   findByProfileIds(profileIds: readonly number[]): Promise<Project[]> {
     return this.prisma.project.findMany({
       where: { profileId: { in: [...profileIds] } },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     });
   }
 
   findByExperienceIds(experienceIds: readonly number[]): Promise<Project[]> {
     return this.prisma.project.findMany({
       where: { experienceId: { in: [...experienceIds] } },
-      orderBy: { sortOrder: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
     });
   }
 
